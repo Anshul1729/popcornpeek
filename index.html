@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>PopcornPeek</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -13,6 +13,7 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       height: 100vh;
       overflow: hidden;
+      touch-action: pan-x pan-y;
     }
 
     /* ── Setup Screen ── */
@@ -77,96 +78,51 @@
       display: inline-flex;
     }
 
-    .qr-box img {
-      width: 160px;
-      height: 160px;
-      display: block;
-    }
+    .qr-box img { width: 160px; height: 160px; display: block; }
 
-    .qr-label {
-      font-size: 0.88rem;
-      color: #666;
-      line-height: 1.6;
-    }
-
-    .qr-label strong {
-      color: #ccc;
-      display: block;
-      font-size: 1rem;
-      margin-bottom: 4px;
-    }
-
-    .qr-url {
-      font-size: 0.75rem;
-      color: #444;
-      font-family: monospace;
-      word-break: break-all;
-    }
+    .qr-label { font-size: 0.88rem; color: #666; line-height: 1.6; }
+    .qr-label strong { color: #ccc; display: block; font-size: 1rem; margin-bottom: 4px; }
+    .qr-url { font-size: 0.75rem; color: #444; font-family: monospace; word-break: break-all; }
 
     .divider {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      width: 100%;
-      color: #333;
-      font-size: 0.75rem;
+      display: flex; align-items: center; gap: 12px;
+      width: 100%; color: #333; font-size: 0.75rem;
     }
-
-    .divider::before,
-    .divider::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: #222;
-    }
-
-    .field-label {
-      font-size: 0.72rem;
-      color: #777;
-      margin-bottom: 7px;
-      font-weight: 600;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    input[type="text"],
-    input[type="password"] {
-      width: 100%;
-      background: #0d0d0d;
-      border: 1px solid #2a2a2a;
-      border-radius: 10px;
-      padding: 12px 14px;
-      color: #fff;
-      font-size: 0.88rem;
-      outline: none;
-      transition: border-color 0.2s;
-      font-family: monospace;
-    }
-
-    input:focus { border-color: #e50914; }
-
-    .hint {
-      font-size: 0.73rem;
-      color: #444;
-      margin-top: 5px;
+    .divider::before, .divider::after {
+      content: ''; flex: 1; height: 1px; background: #222;
     }
 
     .start-btn {
       background: linear-gradient(135deg, #e50914, #c8000f);
-      border: none;
-      border-radius: 10px;
-      padding: 14px;
-      color: #fff;
-      font-size: 0.95rem;
-      font-weight: 700;
-      cursor: pointer;
-      letter-spacing: 0.03em;
-      transition: opacity 0.2s, transform 0.1s;
-      margin-top: 4px;
+      border: none; border-radius: 10px; padding: 14px;
+      color: #fff; font-size: 0.95rem; font-weight: 700;
+      cursor: pointer; letter-spacing: 0.03em;
+      transition: opacity 0.2s, transform 0.1s; margin-top: 4px;
+      width: 100%;
     }
-
     .start-btn:hover { opacity: 0.88; transform: translateY(-1px); }
     .start-btn:active { transform: translateY(0); }
+
+    /* ── Camera denied screen ── */
+    #deniedScreen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      gap: 16px;
+      padding: 32px;
+      text-align: center;
+    }
+
+    .denied-icon { font-size: 3rem; }
+    .denied-title { font-size: 1.4rem; font-weight: 700; }
+    .denied-text { color: #666; font-size: 0.9rem; line-height: 1.6; max-width: 300px; }
+    .retry-btn {
+      background: #1a1a1a; border: 1px solid #333; border-radius: 10px;
+      padding: 12px 24px; color: #fff; font-size: 0.9rem; cursor: pointer;
+      margin-top: 8px;
+    }
 
     /* ── Main App ── */
     #app {
@@ -174,6 +130,7 @@
       position: relative;
       width: 100vw;
       height: 100vh;
+      cursor: crosshair;
     }
 
     #video {
@@ -199,18 +156,18 @@
       align-items: center;
       gap: 8px;
       z-index: 10;
-      white-space: nowrap;
-      max-width: calc(100vw - 160px);
+      max-width: calc(100vw - 120px);
+    }
+
+    .status-text {
       overflow: hidden;
       text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #4ade80;
-      flex-shrink: 0;
+      width: 8px; height: 8px;
+      border-radius: 50%; background: #4ade80; flex-shrink: 0;
     }
 
     .status-dot.scanning {
@@ -226,71 +183,97 @@
     /* ── Settings button ── */
     .settings-btn {
       position: absolute;
-      top: 18px;
-      right: 18px;
+      top: 18px; right: 18px;
       background: rgba(0,0,0,0.6);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
       border: 1px solid rgba(255,255,255,0.08);
       border-radius: 8px;
       padding: 8px 14px;
-      color: #ccc;
-      font-size: 0.8rem;
-      cursor: pointer;
-      z-index: 10;
+      color: #ccc; font-size: 0.8rem;
+      cursor: pointer; z-index: 10;
       transition: background 0.2s;
     }
-
     .settings-btn:hover { background: rgba(255,255,255,0.08); }
 
-    /* ── Scan overlay ring ── */
+    /* ── Scan ring ── */
     .scan-ring {
       position: absolute;
-      top: 50%;
+      top: 42%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 200px;
-      height: 130px;
-      border: 2px solid rgba(255,255,255,0.15);
-      border-radius: 8px;
+      width: min(82vw, 500px);
+      aspect-ratio: 16 / 9;
+      border: 1.5px solid rgba(255,255,255,0.18);
+      border-radius: 12px;
       pointer-events: none;
       z-index: 5;
+      transition: border-color 0.3s, box-shadow 0.3s;
     }
 
-    .scan-ring::before,
-    .scan-ring::after {
+    .scan-ring.scanning {
+      border-color: rgba(229, 9, 20, 0.7);
+      box-shadow: 0 0 0 1px rgba(229, 9, 20, 0.15), inset 0 0 20px rgba(229, 9, 20, 0.04);
+    }
+
+    .scan-ring::before, .scan-ring::after {
       content: '';
       position: absolute;
-      width: 18px;
-      height: 18px;
-      border-color: #e50914;
-      border-style: solid;
+      width: 22px; height: 22px;
+      border-color: #e50914; border-style: solid;
     }
-
     .scan-ring::before {
       top: -2px; left: -2px;
-      border-width: 2px 0 0 2px;
-      border-radius: 4px 0 0 0;
+      border-width: 2px 0 0 2px; border-radius: 6px 0 0 0;
     }
-
     .scan-ring::after {
       bottom: -2px; right: -2px;
-      border-width: 0 2px 2px 0;
-      border-radius: 0 0 4px 0;
+      border-width: 0 2px 2px 0; border-radius: 0 0 6px 0;
+    }
+
+    /* scan line animation */
+    .scan-line {
+      position: absolute;
+      left: 4px; right: 4px; height: 1px;
+      background: linear-gradient(to right, transparent, rgba(229,9,20,0.6), transparent);
+      top: 0;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .scan-ring.scanning .scan-line {
+      opacity: 1;
+      animation: scanLine 1.8s ease-in-out infinite;
+    }
+
+    @keyframes scanLine {
+      0%   { top: 4px; }
+      100% { top: calc(100% - 4px); }
+    }
+
+    /* tap hint */
+    .tap-hint {
+      position: absolute;
+      top: calc(42% + min(82vw, 500px) * 9/32 + 12px);
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.72rem;
+      color: rgba(255,255,255,0.3);
+      pointer-events: none;
+      z-index: 5;
+      white-space: nowrap;
     }
 
     /* ── Movie card ── */
     .movie-card {
       position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
+      bottom: 0; left: 0; right: 0;
       background: linear-gradient(to top,
         rgba(5,5,5,0.98) 0%,
-        rgba(5,5,5,0.92) 60%,
+        rgba(5,5,5,0.92) 65%,
         transparent 100%
       );
-      padding: 28px 28px 36px;
+      padding: 28px 24px 36px;
       transform: translateY(100%);
       transition: transform 0.42s cubic-bezier(0.34, 1.4, 0.64, 1);
       z-index: 10;
@@ -299,85 +282,69 @@
     .movie-card.visible { transform: translateY(0); }
 
     .movie-meta {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 8px;
-      flex-wrap: wrap;
+      display: flex; align-items: center;
+      gap: 10px; margin-bottom: 8px; flex-wrap: wrap;
     }
 
     .imdb-badge {
-      background: #f5c518;
-      color: #000;
-      font-weight: 900;
-      font-size: 0.68rem;
-      padding: 3px 7px;
-      border-radius: 4px;
-      letter-spacing: 0.06em;
+      background: #f5c518; color: #000;
+      font-weight: 900; font-size: 0.68rem;
+      padding: 3px 7px; border-radius: 4px; letter-spacing: 0.06em;
     }
 
-    .rating {
-      font-size: 1.35rem;
-      font-weight: 800;
-      color: #f5c518;
-      line-height: 1;
-    }
-
+    .rating { font-size: 1.35rem; font-weight: 800; color: #f5c518; line-height: 1; }
     .rating-max { font-size: 0.82rem; color: #555; }
     .year-tag   { font-size: 0.82rem; color: #555; }
 
     .movie-title {
-      font-size: 1.75rem;
-      font-weight: 800;
-      margin-bottom: 8px;
-      line-height: 1.15;
-      letter-spacing: -0.3px;
+      font-size: 1.6rem; font-weight: 800;
+      margin-bottom: 8px; line-height: 1.15; letter-spacing: -0.3px;
     }
 
     .movie-plot {
-      color: #999;
-      font-size: 0.88rem;
-      line-height: 1.55;
-      max-width: 620px;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
+      color: #999; font-size: 0.88rem; line-height: 1.55; max-width: 620px;
+      display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
     }
 
-    .tags-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 12px;
-    }
+    .tags-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 
     .tag {
       background: rgba(255,255,255,0.08);
       border: 1px solid rgba(255,255,255,0.07);
-      border-radius: 100px;
-      padding: 4px 12px;
-      font-size: 0.78rem;
-      color: #aaa;
+      border-radius: 100px; padding: 4px 12px;
+      font-size: 0.78rem; color: #aaa;
     }
 
     /* ── Toast ── */
     .toast {
       position: absolute;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%) translateY(80px);
-      background: #c8000f;
-      color: #fff;
-      padding: 10px 20px;
-      border-radius: 10px;
-      font-size: 0.82rem;
-      z-index: 20;
-      transition: transform 0.3s;
+      top: 70px; left: 50%;
+      transform: translateX(-50%) translateY(-20px);
+      background: rgba(30,30,30,0.95);
+      border: 1px solid #333;
+      color: #fff; padding: 10px 20px;
+      border-radius: 10px; font-size: 0.82rem;
+      z-index: 30; opacity: 0;
+      transition: opacity 0.3s, transform 0.3s;
       white-space: nowrap;
+      pointer-events: none;
     }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-    .toast.show { transform: translateX(-50%) translateY(0); }
+    /* ── Landscape adjustments ── */
+    @media (orientation: landscape) {
+      .scan-ring {
+        top: 38%;
+        width: min(55vw, 420px);
+      }
+      .tap-hint { display: none; }
+      .movie-card { padding: 14px 24px 18px; }
+      .movie-title { font-size: 1.1rem; margin-bottom: 4px; }
+      .movie-plot { -webkit-line-clamp: 1; font-size: 0.82rem; }
+      .tags-row { margin-top: 6px; }
+      .movie-meta { margin-bottom: 4px; }
+    }
   </style>
 </head>
 <body>
@@ -387,12 +354,10 @@
   <div class="logo">PopcornPeek</div>
   <div class="subtitle">Point your camera at a movie poster or TV screen — get the IMDb rating instantly.</div>
 
-  <!-- Mobile: show start button -->
   <div class="setup-card" id="mobileCard">
     <button class="start-btn" onclick="startApp()">Start Camera</button>
   </div>
 
-  <!-- Desktop: show QR code -->
   <div class="qr-card" id="desktopCard" style="display:none;">
     <div class="qr-box">
       <img src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&color=000000&bgcolor=ffffff&data=https%3A%2F%2Fanshul1729.github.io%2Fpopcornpeek%2F" alt="QR code" />
@@ -403,10 +368,18 @@
     </div>
     <div class="qr-url">anshul1729.github.io/popcornpeek</div>
     <div class="divider">or</div>
-    <button class="start-btn" style="width:100%;opacity:0.5;font-size:0.85rem;" onclick="document.getElementById('desktopCard').style.display='none'; document.getElementById('mobileCard').style.display='flex';">
+    <button class="start-btn" style="opacity:0.5;font-size:0.85rem;" onclick="document.getElementById('desktopCard').style.display='none'; document.getElementById('mobileCard').style.display='flex';">
       Continue on desktop anyway
     </button>
   </div>
+</div>
+
+<!-- ── Camera Denied Screen ── -->
+<div id="deniedScreen">
+  <div class="denied-icon">📷</div>
+  <div class="denied-title">Camera access needed</div>
+  <div class="denied-text">Please allow camera access in your browser settings, then try again.</div>
+  <button class="retry-btn" onclick="location.reload()">Try again</button>
 </div>
 
 <!-- ── Main App ── -->
@@ -415,12 +388,16 @@
 
   <div class="status-bar">
     <div class="status-dot" id="statusDot"></div>
-    <span id="statusText">Live — scanning every 4s</span>
+    <span class="status-text" id="statusText">Live</span>
   </div>
 
   <button class="settings-btn" onclick="goBack()">⚙ Settings</button>
 
-  <div class="scan-ring"></div>
+  <div class="scan-ring" id="scanRing">
+    <div class="scan-line"></div>
+  </div>
+
+  <div class="tap-hint">Tap to scan now</div>
 
   <div class="movie-card" id="movieCard">
     <div class="movie-meta">
@@ -440,21 +417,44 @@
 <script>
   const apiBase = 'https://popcornpeek.anshul1729.workers.dev';
 
-  // Show QR code on desktop, start button on mobile
+  // Desktop detection
   const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768;
   if (!isMobile) {
     document.getElementById('mobileCard').style.display = 'none';
     document.getElementById('desktopCard').style.display = 'flex';
   }
-  let stream = null;
-  let scanTimer = null;
-  let isScanning = false;
-  let lastTitle = '';
 
-  const video = document.getElementById('video');
+  let stream      = null;
+  let scanTimer   = null;
+  let isScanning  = false;
+  let lastTitle   = '';
+  let noDetectCount = 0;
+  let wakeLock    = null;
+  let currentZoom = 1;
+  let lastPinchDist = 0;
 
+  const video    = document.getElementById('video');
+  const scanRing = document.getElementById('scanRing');
+
+  // ── Wake Lock ─────────────────────────────────────────────────────────────
+  async function requestWakeLock() {
+    try {
+      wakeLock = await navigator.wakeLock?.request('screen');
+    } catch { /* not supported */ }
+  }
+
+  function releaseWakeLock() {
+    wakeLock?.release();
+    wakeLock = null;
+  }
+
+  // Re-acquire wake lock when tab becomes visible again
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && stream) requestWakeLock();
+  });
+
+  // ── Start app ─────────────────────────────────────────────────────────────
   async function startApp() {
-
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -472,7 +472,8 @@
         video.srcObject = stream;
         await video.play();
       } catch {
-        alert('Camera access denied — please allow camera permissions.');
+        document.getElementById('setup').style.display = 'none';
+        document.getElementById('deniedScreen').style.display = 'flex';
         return;
       }
     }
@@ -480,13 +481,56 @@
     document.getElementById('setup').style.display = 'none';
     document.getElementById('app').style.display = 'block';
 
+    await requestWakeLock();
+    setupPinchZoom();
+
     scanNow();
     scanTimer = setInterval(scanNow, 4000);
   }
 
+  // ── Pinch-to-zoom (camera, not page) ──────────────────────────────────────
+  function setupPinchZoom() {
+    video.addEventListener('touchstart', e => {
+      if (e.touches.length === 2) lastPinchDist = pinchDist(e.touches);
+    }, { passive: true });
+
+    video.addEventListener('touchmove', e => {
+      if (e.touches.length !== 2) return;
+      e.preventDefault();
+      const d = pinchDist(e.touches);
+      if (lastPinchDist > 0) applyZoom(currentZoom * (d / lastPinchDist));
+      lastPinchDist = d;
+    }, { passive: false });
+
+    video.addEventListener('touchend', () => { lastPinchDist = 0; });
+  }
+
+  function pinchDist(touches) {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  async function applyZoom(zoom) {
+    if (!stream) return;
+    const track = stream.getVideoTracks()[0];
+    const caps  = track.getCapabilities?.();
+    if (!caps?.zoom) return;
+    currentZoom = Math.min(Math.max(zoom, caps.zoom.min), caps.zoom.max);
+    await track.applyConstraints({ advanced: [{ zoom: currentZoom }] });
+  }
+
+  // ── Tap to scan immediately ────────────────────────────────────────────────
+  document.getElementById('app').addEventListener('click', e => {
+    if (e.target.closest('.settings-btn') || e.target.closest('.movie-card')) return;
+    scanNow();
+  });
+
+  // ── Scan loop ─────────────────────────────────────────────────────────────
   async function scanNow() {
     if (isScanning || !video.videoWidth) return;
     isScanning = true;
+    scanRing.classList.add('scanning');
     setStatus('scanning', 'Scanning…');
 
     try {
@@ -502,83 +546,106 @@
       const result = await res.json();
 
       if (result?.found && result.title) {
+        noDetectCount = 0;
         setStatus('live', `Detected: ${result.title}`);
+
         if (result.title.toLowerCase() !== lastTitle.toLowerCase()) {
           lastTitle = result.title;
           const movieRes = await fetch(`${apiBase}/movie?title=${encodeURIComponent(result.title)}${result.year ? '&year=' + result.year : ''}`);
-          const details = await movieRes.json();
-          showCard(details?.found ? details : { title: result.title, year: result.year });
+          const details  = await movieRes.json();
+          showCard(details?.found ? details : { title: result.title, year: result.year, noImdb: true });
         }
       } else {
-        setStatus('live', 'Scanning — point at a movie poster');
+        noDetectCount++;
+        setStatus('live', 'Point at a movie poster');
+
+        // Auto-hide card after 3 consecutive misses
+        if (noDetectCount >= 3) {
+          document.getElementById('movieCard').classList.remove('visible');
+          lastTitle = '';
+          noDetectCount = 0;
+        }
       }
     } catch (err) {
       console.error(err);
       setStatus('live', 'Error — retrying…');
     }
 
+    scanRing.classList.remove('scanning');
     isScanning = false;
   }
 
+  // ── Capture only what's inside the scan ring ───────────────────────────────
   function captureFrame() {
+    const vW = video.videoWidth;
+    const vH = video.videoHeight;
+    const dW = video.clientWidth;
+    const dH = video.clientHeight;
+
+    // object-fit: cover — calculate scale and clip offsets
+    const scale = Math.max(dW / vW, dH / vH);
+    const clipX = (vW * scale - dW) / 2;  // display px clipped from left edge
+    const clipY = (vH * scale - dH) / 2;  // display px clipped from top edge
+
+    // Scan ring position in display coords
+    const rect = scanRing.getBoundingClientRect();
+
+    // Convert to video pixel coords
+    const srcX = (rect.left + clipX) / scale;
+    const srcY = (rect.top  + clipY) / scale;
+    const srcW = rect.width  / scale;
+    const srcH = rect.height / scale;
+
     const c = document.createElement('canvas');
-    c.width = video.videoWidth;
-    c.height = video.videoHeight;
-    c.getContext('2d').drawImage(video, 0, 0);
-    const small = document.createElement('canvas');
-    small.width = 640;
-    small.height = Math.round(640 * (video.videoHeight / video.videoWidth));
-    small.getContext('2d').drawImage(c, 0, 0, small.width, small.height);
-    return small.toDataURL('image/jpeg', 0.75).split(',')[1];
+    c.width  = Math.round(srcW);
+    c.height = Math.round(srcH);
+    c.getContext('2d').drawImage(video, srcX, srcY, srcW, srcH, 0, 0, c.width, c.height);
+
+    return c.toDataURL('image/jpeg', 0.92).split(',')[1];
   }
 
+  // ── Show movie card ────────────────────────────────────────────────────────
   function showCard(d) {
     document.getElementById('cardTitle').textContent = d.title || 'Unknown';
-    document.getElementById('cardYear').textContent = d.year ? `(${d.year})` : '';
+    document.getElementById('cardYear').textContent  = d.year  ? `(${d.year})` : '';
     document.getElementById('cardRating').textContent = d.rating || '—';
-    document.getElementById('cardPlot').textContent = d.plot || (d.noImdb ? 'Not yet listed on IMDb.' : 'No description available.');
-    document.getElementById('imdbBadge').style.opacity = d.noImdb ? '0.4' : '1';
+    document.getElementById('cardPlot').textContent  = d.plot  || (d.noImdb ? 'Not yet listed on IMDb.' : 'No description available.');
+    document.getElementById('imdbBadge').style.opacity = d.noImdb ? '0.35' : '1';
 
     const tagsEl = document.getElementById('cardTags');
     tagsEl.innerHTML = '';
-    if (d.genre) {
-      d.genre.split(', ').slice(0, 3).forEach(g => {
-        const t = document.createElement('span');
-        t.className = 'tag';
-        t.textContent = g;
-        tagsEl.appendChild(t);
-      });
-    }
+    d.genre?.split(', ').slice(0, 3).forEach(g => {
+      const t = document.createElement('span');
+      t.className = 'tag'; t.textContent = g;
+      tagsEl.appendChild(t);
+    });
     if (d.runtime) {
       const t = document.createElement('span');
-      t.className = 'tag';
-      t.textContent = d.runtime;
+      t.className = 'tag'; t.textContent = d.runtime;
       tagsEl.appendChild(t);
     }
 
     document.getElementById('movieCard').classList.add('visible');
+
+    // Haptic feedback on supported devices
+    navigator.vibrate?.(40);
   }
 
+  // ── Status pill ───────────────────────────────────────────────────────────
   function setStatus(type, text) {
     document.getElementById('statusDot').className = `status-dot${type === 'scanning' ? ' scanning' : ''}`;
     document.getElementById('statusText').textContent = text;
   }
 
-  function showToast(msg) {
-    const t = document.getElementById('toast');
-    t.textContent = msg;
-    t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 3000);
-  }
-
+  // ── Go back ───────────────────────────────────────────────────────────────
   function goBack() {
     clearInterval(scanTimer);
     stream?.getTracks().forEach(t => t.stop());
+    releaseWakeLock();
     document.getElementById('app').style.display = 'none';
     document.getElementById('movieCard').classList.remove('visible');
     document.getElementById('setup').style.display = 'flex';
-    lastTitle = '';
-    isScanning = false;
+    lastTitle = ''; isScanning = false; noDetectCount = 0;
   }
 </script>
 
