@@ -4,12 +4,6 @@
 
 ---
 
-## Demo
-
-<img src="demo.png" width="320" alt="PopcornPeek in action" />
-
----
-
 ## The problem
 
 You know that moment — you're scrolling through Prime, Netflix, or any streaming app, and you see a movie you *kind of* want to watch. But you're not sure if it's worth your time.
@@ -32,6 +26,12 @@ PopcornPeek is a tiny web app that opens your camera and automatically identifie
 - ⏱ Runtime
 
 No typing. No searching. Just point and peek.
+
+---
+
+## Demo
+
+<img src="demo.png" width="320" alt="PopcornPeek in action" />
 
 ---
 
