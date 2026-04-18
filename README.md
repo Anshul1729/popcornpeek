@@ -6,9 +6,11 @@
 
 ## The problem
 
-You know that moment — you're scrolling through Prime, Netflix, or MX Player, and you see a movie you *kind of* want to watch. But you're not sure if it's worth your time.
+You know that moment — you're scrolling through Prime, Netflix, or any streaming app, and you see a movie you *kind of* want to watch. But you're not sure if it's worth your time.
 
 So you pick up your phone, open the browser, type the movie name (which you might not even spell right), find the IMDb page, and *finally* check the rating.
+
+
 
 That's way too many steps for a simple question: **is this movie good?**
 
@@ -60,7 +62,7 @@ The backend runs as a **Cloudflare Worker** — zero cold starts, always instant
 
 ## Try it
 
-**[popcornpeek.anshul1729.workers.dev](https://anshul1729.github.io/popcornpeek/)**
+**[anshul1729.github.io/popcornpeek](https://anshul1729.github.io/popcornpeek/)**
 
 Open on your phone, hit **Start Camera**, and point it at any movie poster or streaming screen.
 
