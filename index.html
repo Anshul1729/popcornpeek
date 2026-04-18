@@ -55,6 +55,71 @@
       gap: 18px;
     }
 
+    /* ── Desktop QR screen ── */
+    .qr-card {
+      background: #141414;
+      border: 1px solid #252525;
+      border-radius: 18px;
+      padding: 32px 28px;
+      width: 100%;
+      max-width: 380px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      text-align: center;
+    }
+
+    .qr-box {
+      background: #fff;
+      border-radius: 12px;
+      padding: 12px;
+      display: inline-flex;
+    }
+
+    .qr-box img {
+      width: 160px;
+      height: 160px;
+      display: block;
+    }
+
+    .qr-label {
+      font-size: 0.88rem;
+      color: #666;
+      line-height: 1.6;
+    }
+
+    .qr-label strong {
+      color: #ccc;
+      display: block;
+      font-size: 1rem;
+      margin-bottom: 4px;
+    }
+
+    .qr-url {
+      font-size: 0.75rem;
+      color: #444;
+      font-family: monospace;
+      word-break: break-all;
+    }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      color: #333;
+      font-size: 0.75rem;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #222;
+    }
+
     .field-label {
       font-size: 0.72rem;
       color: #777;
@@ -322,8 +387,25 @@
   <div class="logo">PopcornPeek</div>
   <div class="subtitle">Point your camera at a movie poster or TV screen — get the IMDb rating instantly.</div>
 
-  <div class="setup-card">
+  <!-- Mobile: show start button -->
+  <div class="setup-card" id="mobileCard">
     <button class="start-btn" onclick="startApp()">Start Camera</button>
+  </div>
+
+  <!-- Desktop: show QR code -->
+  <div class="qr-card" id="desktopCard" style="display:none;">
+    <div class="qr-box">
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&color=000000&bgcolor=ffffff&data=https%3A%2F%2Fanshul1729.github.io%2Fpopcornpeek%2F" alt="QR code" />
+    </div>
+    <div class="qr-label">
+      <strong>Open on your phone</strong>
+      PopcornPeek uses your phone's back camera to scan movie posters on your TV — it doesn't work great on laptops.
+    </div>
+    <div class="qr-url">anshul1729.github.io/popcornpeek</div>
+    <div class="divider">or</div>
+    <button class="start-btn" style="width:100%;opacity:0.5;font-size:0.85rem;" onclick="document.getElementById('desktopCard').style.display='none'; document.getElementById('mobileCard').style.display='flex';">
+      Continue on desktop anyway
+    </button>
   </div>
 </div>
 
@@ -357,6 +439,13 @@
 
 <script>
   const apiBase = 'https://popcornpeek.anshul1729.workers.dev';
+
+  // Show QR code on desktop, start button on mobile
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768;
+  if (!isMobile) {
+    document.getElementById('mobileCard').style.display = 'none';
+    document.getElementById('desktopCard').style.display = 'flex';
+  }
   let stream = null;
   let scanTimer = null;
   let isScanning = false;
