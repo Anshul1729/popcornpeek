@@ -62,7 +62,7 @@ The backend runs as a **Cloudflare Worker** — zero cold starts, always instant
 
 ## Try it
 
-**[anshul1729.github.io/popcornpeek](https://anshul1729.github.io/popcornpeek/)**
+**[popcornpeek.vercel.app](https://popcornpeek.vercel.app)**
 
 Open on your phone, hit **Start Camera**, and point it at any movie poster or streaming screen.
 
