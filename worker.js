@@ -1,6 +1,5 @@
 export default {
   async fetch(request, env) {
-    // CORS preflight
     if (request.method === 'OPTIONS') {
       return cors(new Response(null, { status: 204 }));
     }
@@ -19,7 +18,6 @@ export default {
   }
 };
 
-// POST /identify  { image: "<base64 jpeg>" }
 async function handleIdentify(request, env) {
   let body;
   try {
@@ -43,7 +41,21 @@ async function handleIdentify(request, env) {
         content: [
           {
             type: 'text',
-            text: 'Look at this image carefully. Is there a movie or TV show poster, title, or any identifiable movie/show name visible — on a screen, physical poster, DVD cover, or anywhere? If yes, respond ONLY with valid JSON (no markdown, no extra text): {"found": true, "title": "Exact Title", "year": "YYYY"}. Omit year if not visible. If no movie or show is identifiable, respond ONLY with: {"found": false}'
+            text: `You are analyzing a camera image that likely shows a TV screen or streaming app with movie/show thumbnails.
+
+Your job: identify the MOST PROMINENT movie or TV show visible. It could be Bollywood, Hollywood, South Indian (Tamil, Telugu, Malayalam, Kannada), or any regional language film.
+
+Rules:
+- Read ALL text carefully including Hindi (Devanagari script), Tamil, Telugu, or other scripts
+- The title may appear in English, Hindi, or regional language — always return the most widely known English title
+- If multiple movies are visible, pick the one that is largest or most centered
+- For Bollywood/Indian films, use the official English title (e.g. "Pushpa 2 The Rule" not "पुष्पा 2")
+- Ignore streaming platform logos (Netflix, Prime, MX Player etc.)
+
+Respond ONLY with valid JSON, no markdown:
+If found: {"found": true, "title": "English Title", "year": "YYYY"}
+If not found: {"found": false}
+Omit year if not visible.`
           },
           {
             type: 'image_url',
@@ -51,7 +63,7 @@ async function handleIdentify(request, env) {
           }
         ]
       }],
-      max_tokens: 80,
+      max_tokens: 100,
       temperature: 0.1
     })
   });
@@ -72,33 +84,50 @@ async function handleIdentify(request, env) {
   }
 }
 
-// GET /movie?title=Inception&year=2010
 async function handleMovie(url, env) {
   const title = url.searchParams.get('title');
   const year  = url.searchParams.get('year');
 
   if (!title) return json({ error: 'No title provided' }, 400);
 
+  // 1. Try exact match
   let omdbUrl = `https://www.omdbapi.com/?t=${encodeURIComponent(title)}&apikey=${env.OMDB_API_KEY}&plot=short`;
   if (year) omdbUrl += `&y=${year}`;
 
-  const res  = await fetch(omdbUrl);
-  const data = await res.json();
+  let res  = await fetch(omdbUrl);
+  let data = await res.json();
 
-  if (data.Response !== 'True') return json({ found: false });
+  // 2. If not found, try search and pick top result
+  if (data.Response !== 'True') {
+    const searchUrl = `https://www.omdbapi.com/?s=${encodeURIComponent(title)}&apikey=${env.OMDB_API_KEY}&type=movie`;
+    const searchRes  = await fetch(searchUrl);
+    const searchData = await searchRes.json();
+
+    if (searchData.Response === 'True' && searchData.Search?.length > 0) {
+      const top = searchData.Search[0];
+      const detailUrl = `https://www.omdbapi.com/?i=${top.imdbID}&apikey=${env.OMDB_API_KEY}&plot=short`;
+      const detailRes  = await fetch(detailUrl);
+      data = await detailRes.json();
+    }
+  }
+
+  if (data.Response !== 'True') {
+    // Return basic info so frontend can still show the title
+    return json({ found: true, title, year: year || null, rating: null, plot: null, genre: null, runtime: null, noImdb: true });
+  }
 
   return json({
     found:   true,
     title:   data.Title,
     year:    data.Year,
-    rating:  data.imdbRating  !== 'N/A' ? data.imdbRating  : null,
-    plot:    data.Plot         !== 'N/A' ? data.Plot         : null,
-    genre:   data.Genre        !== 'N/A' ? data.Genre        : null,
-    runtime: data.Runtime      !== 'N/A' ? data.Runtime      : null,
+    rating:  data.imdbRating !== 'N/A' ? data.imdbRating : null,
+    plot:    data.Plot        !== 'N/A' ? data.Plot        : null,
+    genre:   data.Genre       !== 'N/A' ? data.Genre       : null,
+    runtime: data.Runtime     !== 'N/A' ? data.Runtime     : null,
+    noImdb:  false,
   });
 }
 
-// Helpers
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,

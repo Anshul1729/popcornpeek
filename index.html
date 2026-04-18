@@ -342,7 +342,7 @@
 
   <div class="movie-card" id="movieCard">
     <div class="movie-meta">
-      <span class="imdb-badge">IMDb</span>
+      <span class="imdb-badge" id="imdbBadge">IMDb</span>
       <span class="rating" id="cardRating">—</span>
       <span class="rating-max">/10</span>
       <span class="year-tag" id="cardYear"></span>
@@ -368,7 +368,12 @@
 
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+        video: {
+          facingMode: 'environment',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          advanced: [{ focusMode: 'continuous' }]
+        }
       });
       video.srcObject = stream;
       await video.play();
@@ -442,7 +447,8 @@
     document.getElementById('cardTitle').textContent = d.title || 'Unknown';
     document.getElementById('cardYear').textContent = d.year ? `(${d.year})` : '';
     document.getElementById('cardRating').textContent = d.rating || '—';
-    document.getElementById('cardPlot').textContent = d.plot || 'No description available.';
+    document.getElementById('cardPlot').textContent = d.plot || (d.noImdb ? 'Not yet listed on IMDb.' : 'No description available.');
+    document.getElementById('imdbBadge').style.opacity = d.noImdb ? '0.4' : '1';
 
     const tagsEl = document.getElementById('cardTags');
     tagsEl.innerHTML = '';
