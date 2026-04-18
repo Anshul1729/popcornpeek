@@ -4,6 +4,12 @@
 
 ---
 
+## Demo
+
+![PopcornPeek in action](demo.png)
+
+---
+
 ## The problem
 
 You know that moment — you're scrolling through Prime, Netflix, or any streaming app, and you see a movie you *kind of* want to watch. But you're not sure if it's worth your time.
