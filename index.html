@@ -86,8 +86,6 @@
       margin-top: 5px;
     }
 
-    .hint a { color: #888; }
-
     .start-btn {
       background: linear-gradient(135deg, #e50914, #c8000f);
       border: none;
@@ -192,7 +190,6 @@
       border-radius: 8px;
       pointer-events: none;
       z-index: 5;
-      transition: opacity 0.3s;
     }
 
     .scan-ring::before,
@@ -261,15 +258,8 @@
       line-height: 1;
     }
 
-    .rating-max {
-      font-size: 0.82rem;
-      color: #555;
-    }
-
-    .year-tag {
-      font-size: 0.82rem;
-      color: #555;
-    }
+    .rating-max { font-size: 0.82rem; color: #555; }
+    .year-tag   { font-size: 0.82rem; color: #555; }
 
     .movie-title {
       font-size: 1.75rem;
@@ -306,7 +296,7 @@
       color: #aaa;
     }
 
-    /* ── Error toast ── */
+    /* ── Toast ── */
     .toast {
       position: absolute;
       bottom: 24px;
@@ -334,14 +324,9 @@
 
   <div class="setup-card">
     <div>
-      <div class="field-label">Groq API Key</div>
-      <input type="password" id="groqKey" placeholder="gsk_..." autocomplete="off" />
-      <div class="hint">Free at <a href="https://console.groq.com" target="_blank">console.groq.com</a></div>
-    </div>
-    <div>
-      <div class="field-label">OMDB API Key</div>
-      <input type="text" id="omdbKey" placeholder="e.g. a1b2c3d4" autocomplete="off" />
-      <div class="hint">Free at <a href="https://omdbapi.com" target="_blank">omdbapi.com</a> — 1,000 req/day</div>
+      <div class="field-label">Backend URL</div>
+      <input type="text" id="backendUrl" placeholder="http://localhost:3000" autocomplete="off" />
+      <div class="hint">Your PopcornPeek server address</div>
     </div>
     <button class="start-btn" onclick="startApp()">Start Camera</button>
   </div>
@@ -358,7 +343,7 @@
 
   <button class="settings-btn" onclick="goBack()">⚙ Settings</button>
 
-  <div class="scan-ring" id="scanRing"></div>
+  <div class="scan-ring"></div>
 
   <div class="movie-card" id="movieCard">
     <div class="movie-meta">
@@ -376,8 +361,7 @@
 </div>
 
 <script>
-  let groqKey = '';
-  let omdbKey = '';
+  let apiBase = '';
   let stream = null;
   let scanTimer = null;
   let isScanning = false;
@@ -385,15 +369,34 @@
 
   const video = document.getElementById('video');
 
-  // ── Start app ──────────────────────────────────────────────────────────────
-  async function startApp() {
-    groqKey = document.getElementById('groqKey').value.trim();
-    omdbKey = document.getElementById('omdbKey').value.trim();
+  // Pre-fill from localStorage
+  window.addEventListener('DOMContentLoaded', () => {
+    const saved = localStorage.getItem('pp_backend');
+    if (saved) document.getElementById('backendUrl').value = saved;
+  });
 
-    if (!groqKey || !omdbKey) {
-      showToast('Please enter both API keys.');
+  async function startApp() {
+    const raw = document.getElementById('backendUrl').value.trim();
+    apiBase = raw.endsWith('/') ? raw.slice(0, -1) : raw;
+
+    if (!apiBase) {
+      showToast('Please enter the backend URL.');
       return;
     }
+
+    // Quick health check
+    try {
+      const check = await fetch(`${apiBase}/identify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: '' })
+      });
+      if (check.status === 502 || check.status === 404) throw new Error();
+    } catch {
+      // Allow through — server might just reject empty image
+    }
+
+    localStorage.setItem('pp_backend', apiBase);
 
     try {
       stream = await navigator.mediaDevices.getUserMedia({
@@ -402,13 +405,12 @@
       video.srcObject = stream;
       await video.play();
     } catch {
-      // Fallback to any camera if rear not available
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: true });
         video.srcObject = stream;
         await video.play();
-      } catch (err) {
-        showToastSetup('Camera access denied — please allow camera permissions.');
+      } catch {
+        alert('Camera access denied — please allow camera permissions.');
         return;
       }
     }
@@ -416,12 +418,10 @@
     document.getElementById('setup').style.display = 'none';
     document.getElementById('app').style.display = 'block';
 
-    // Start periodic scan
     scanNow();
     scanTimer = setInterval(scanNow, 4000);
   }
 
-  // ── Scan loop ──────────────────────────────────────────────────────────────
   async function scanNow() {
     if (isScanning || !video.videoWidth) return;
     isScanning = true;
@@ -429,14 +429,23 @@
 
     try {
       const base64 = captureFrame();
-      const result = await identifyMovie(base64);
+
+      const res = await fetch(`${apiBase}/identify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64 })
+      });
+
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const result = await res.json();
 
       if (result?.found && result.title) {
         setStatus('live', `Detected: ${result.title}`);
         if (result.title.toLowerCase() !== lastTitle.toLowerCase()) {
           lastTitle = result.title;
-          const details = await fetchDetails(result.title, result.year);
-          showCard(details || { title: result.title, year: result.year });
+          const movieRes = await fetch(`${apiBase}/movie?title=${encodeURIComponent(result.title)}${result.year ? '&year=' + result.year : ''}`);
+          const details = await movieRes.json();
+          showCard(details?.found ? details : { title: result.title, year: result.year });
         }
       } else {
         setStatus('live', 'Scanning — point at a movie poster');
@@ -449,13 +458,11 @@
     isScanning = false;
   }
 
-  // ── Capture a JPEG frame from the video ───────────────────────────────────
   function captureFrame() {
     const c = document.createElement('canvas');
     c.width = video.videoWidth;
     c.height = video.videoHeight;
     c.getContext('2d').drawImage(video, 0, 0);
-    // Reduce size for faster upload
     const small = document.createElement('canvas');
     small.width = 640;
     small.height = Math.round(640 * (video.videoHeight / video.videoWidth));
@@ -463,72 +470,6 @@
     return small.toDataURL('image/jpeg', 0.75).split(',')[1];
   }
 
-  // ── Groq vision call ──────────────────────────────────────────────────────
-  async function identifyMovie(base64) {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${groqKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: 'Look at this image carefully. Is there a movie or TV show poster, title, or any identifiable movie/show name visible — either on a screen, a physical poster, a DVD cover, or anywhere? If yes, respond ONLY with valid JSON (no markdown, no extra text): {"found": true, "title": "Exact Title", "year": "YYYY"}. Omit year if not visible. If no movie or show is identifiable, respond ONLY with: {"found": false}'
-            },
-            {
-              type: 'image_url',
-              image_url: { url: `data:image/jpeg;base64,${base64}` }
-            }
-          ]
-        }],
-        max_tokens: 80,
-        temperature: 0.1
-      })
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err?.error?.message || `Groq ${res.status}`);
-    }
-
-    const data = await res.json();
-    const text = (data.choices?.[0]?.message?.content || '').trim();
-
-    try {
-      return JSON.parse(text);
-    } catch {
-      const match = text.match(/\{[\s\S]*?\}/);
-      if (match) return JSON.parse(match[0]);
-      return { found: false };
-    }
-  }
-
-  // ── OMDB lookup ────────────────────────────────────────────────────────────
-  async function fetchDetails(title, year) {
-    let url = `https://www.omdbapi.com/?t=${encodeURIComponent(title)}&apikey=${omdbKey}&plot=short`;
-    if (year) url += `&y=${year}`;
-
-    const res = await fetch(url);
-    const data = await res.json();
-
-    if (data.Response !== 'True') return null;
-
-    return {
-      title: data.Title,
-      year: data.Year,
-      rating: data.imdbRating !== 'N/A' ? data.imdbRating : null,
-      plot: data.Plot !== 'N/A' ? data.Plot : null,
-      genre: data.Genre !== 'N/A' ? data.Genre : null,
-      runtime: data.Runtime !== 'N/A' ? data.Runtime : null,
-    };
-  }
-
-  // ── Render movie card ──────────────────────────────────────────────────────
   function showCard(d) {
     document.getElementById('cardTitle').textContent = d.title || 'Unknown';
     document.getElementById('cardYear').textContent = d.year ? `(${d.year})` : '';
@@ -555,15 +496,9 @@
     document.getElementById('movieCard').classList.add('visible');
   }
 
-  // ── Status pill ────────────────────────────────────────────────────────────
   function setStatus(type, text) {
     document.getElementById('statusDot').className = `status-dot${type === 'scanning' ? ' scanning' : ''}`;
     document.getElementById('statusText').textContent = text;
-  }
-
-  // ── Toast (setup screen) ───────────────────────────────────────────────────
-  function showToastSetup(msg) {
-    alert(msg);
   }
 
   function showToast(msg) {
@@ -573,7 +508,6 @@
     setTimeout(() => t.classList.remove('show'), 3000);
   }
 
-  // ── Go back to settings ────────────────────────────────────────────────────
   function goBack() {
     clearInterval(scanTimer);
     stream?.getTracks().forEach(t => t.stop());
