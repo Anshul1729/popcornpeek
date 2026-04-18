@@ -323,11 +323,6 @@
   <div class="subtitle">Point your camera at a movie poster or TV screen — get the IMDb rating instantly.</div>
 
   <div class="setup-card">
-    <div>
-      <div class="field-label">Backend URL</div>
-      <input type="text" id="backendUrl" placeholder="http://localhost:3000" autocomplete="off" />
-      <div class="hint">Your PopcornPeek server address</div>
-    </div>
     <button class="start-btn" onclick="startApp()">Start Camera</button>
   </div>
 </div>
@@ -361,7 +356,7 @@
 </div>
 
 <script>
-  let apiBase = '';
+  const apiBase = 'https://popcornpeek.anshul1729.workers.dev';
   let stream = null;
   let scanTimer = null;
   let isScanning = false;
@@ -369,34 +364,7 @@
 
   const video = document.getElementById('video');
 
-  // Pre-fill from localStorage
-  window.addEventListener('DOMContentLoaded', () => {
-    const saved = localStorage.getItem('pp_backend');
-    if (saved) document.getElementById('backendUrl').value = saved;
-  });
-
   async function startApp() {
-    const raw = document.getElementById('backendUrl').value.trim();
-    apiBase = raw.endsWith('/') ? raw.slice(0, -1) : raw;
-
-    if (!apiBase) {
-      showToast('Please enter the backend URL.');
-      return;
-    }
-
-    // Quick health check
-    try {
-      const check = await fetch(`${apiBase}/identify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: '' })
-      });
-      if (check.status === 502 || check.status === 404) throw new Error();
-    } catch {
-      // Allow through — server might just reject empty image
-    }
-
-    localStorage.setItem('pp_backend', apiBase);
 
     try {
       stream = await navigator.mediaDevices.getUserMedia({
