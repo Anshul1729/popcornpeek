@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PopcornPeek</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0a0a0a;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Setup Screen ── */
+    #setup {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      gap: 20px;
+      padding: 32px;
+    }
+
+    .logo {
+      font-size: 2.6rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #e50914, #ff6b35);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -0.5px;
+    }
+
+    .subtitle {
+      color: #666;
+      font-size: 0.95rem;
+      text-align: center;
+      max-width: 340px;
+      line-height: 1.5;
+    }
+
+    .setup-card {
+      background: #141414;
+      border: 1px solid #252525;
+      border-radius: 18px;
+      padding: 28px;
+      width: 100%;
+      max-width: 380px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .field-label {
+      font-size: 0.72rem;
+      color: #777;
+      margin-bottom: 7px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      background: #0d0d0d;
+      border: 1px solid #2a2a2a;
+      border-radius: 10px;
+      padding: 12px 14px;
+      color: #fff;
+      font-size: 0.88rem;
+      outline: none;
+      transition: border-color 0.2s;
+      font-family: monospace;
+    }
+
+    input:focus { border-color: #e50914; }
+
+    .hint {
+      font-size: 0.73rem;
+      color: #444;
+      margin-top: 5px;
+    }
+
+    .hint a { color: #888; }
+
+    .start-btn {
+      background: linear-gradient(135deg, #e50914, #c8000f);
+      border: none;
+      border-radius: 10px;
+      padding: 14px;
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.03em;
+      transition: opacity 0.2s, transform 0.1s;
+      margin-top: 4px;
+    }
+
+    .start-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+    .start-btn:active { transform: translateY(0); }
+
+    /* ── Main App ── */
+    #app {
+      display: none;
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* ── Top status pill ── */
+    .status-bar {
+      position: absolute;
+      top: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.65);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 100px;
+      padding: 8px 18px;
+      font-size: 0.82rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      z-index: 10;
+      white-space: nowrap;
+      max-width: calc(100vw - 160px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #4ade80;
+      flex-shrink: 0;
+    }
+
+    .status-dot.scanning {
+      background: #f59e0b;
+      animation: blink 0.9s ease-in-out infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.2; }
+    }
+
+    /* ── Settings button ── */
+    .settings-btn {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 8px 14px;
+      color: #ccc;
+      font-size: 0.8rem;
+      cursor: pointer;
+      z-index: 10;
+      transition: background 0.2s;
+    }
+
+    .settings-btn:hover { background: rgba(255,255,255,0.08); }
+
+    /* ── Scan overlay ring ── */
+    .scan-ring {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 200px;
+      height: 130px;
+      border: 2px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      pointer-events: none;
+      z-index: 5;
+      transition: opacity 0.3s;
+    }
+
+    .scan-ring::before,
+    .scan-ring::after {
+      content: '';
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      border-color: #e50914;
+      border-style: solid;
+    }
+
+    .scan-ring::before {
+      top: -2px; left: -2px;
+      border-width: 2px 0 0 2px;
+      border-radius: 4px 0 0 0;
+    }
+
+    .scan-ring::after {
+      bottom: -2px; right: -2px;
+      border-width: 0 2px 2px 0;
+      border-radius: 0 0 4px 0;
+    }
+
+    /* ── Movie card ── */
+    .movie-card {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(to top,
+        rgba(5,5,5,0.98) 0%,
+        rgba(5,5,5,0.92) 60%,
+        transparent 100%
+      );
+      padding: 28px 28px 36px;
+      transform: translateY(100%);
+      transition: transform 0.42s cubic-bezier(0.34, 1.4, 0.64, 1);
+      z-index: 10;
+    }
+
+    .movie-card.visible { transform: translateY(0); }
+
+    .movie-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+
+    .imdb-badge {
+      background: #f5c518;
+      color: #000;
+      font-weight: 900;
+      font-size: 0.68rem;
+      padding: 3px 7px;
+      border-radius: 4px;
+      letter-spacing: 0.06em;
+    }
+
+    .rating {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: #f5c518;
+      line-height: 1;
+    }
+
+    .rating-max {
+      font-size: 0.82rem;
+      color: #555;
+    }
+
+    .year-tag {
+      font-size: 0.82rem;
+      color: #555;
+    }
+
+    .movie-title {
+      font-size: 1.75rem;
+      font-weight: 800;
+      margin-bottom: 8px;
+      line-height: 1.15;
+      letter-spacing: -0.3px;
+    }
+
+    .movie-plot {
+      color: #999;
+      font-size: 0.88rem;
+      line-height: 1.55;
+      max-width: 620px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .tags-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .tag {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 100px;
+      padding: 4px 12px;
+      font-size: 0.78rem;
+      color: #aaa;
+    }
+
+    /* ── Error toast ── */
+    .toast {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #c8000f;
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-size: 0.82rem;
+      z-index: 20;
+      transition: transform 0.3s;
+      white-space: nowrap;
+    }
+
+    .toast.show { transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<!-- ── Setup Screen ── -->
+<div id="setup">
+  <div class="logo">PopcornPeek</div>
+  <div class="subtitle">Point your camera at a movie poster or TV screen — get the IMDb rating instantly.</div>
+
+  <div class="setup-card">
+    <div>
+      <div class="field-label">Groq API Key</div>
+      <input type="password" id="groqKey" placeholder="gsk_..." autocomplete="off" />
+      <div class="hint">Free at <a href="https://console.groq.com" target="_blank">console.groq.com</a></div>
+    </div>
+    <div>
+      <div class="field-label">OMDB API Key</div>
+      <input type="text" id="omdbKey" placeholder="e.g. a1b2c3d4" autocomplete="off" />
+      <div class="hint">Free at <a href="https://omdbapi.com" target="_blank">omdbapi.com</a> — 1,000 req/day</div>
+    </div>
+    <button class="start-btn" onclick="startApp()">Start Camera</button>
+  </div>
+</div>
+
+<!-- ── Main App ── -->
+<div id="app">
+  <video id="video" autoplay playsinline muted></video>
+
+  <div class="status-bar">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Live — scanning every 4s</span>
+  </div>
+
+  <button class="settings-btn" onclick="goBack()">⚙ Settings</button>
+
+  <div class="scan-ring" id="scanRing"></div>
+
+  <div class="movie-card" id="movieCard">
+    <div class="movie-meta">
+      <span class="imdb-badge">IMDb</span>
+      <span class="rating" id="cardRating">—</span>
+      <span class="rating-max">/10</span>
+      <span class="year-tag" id="cardYear"></span>
+    </div>
+    <div class="movie-title" id="cardTitle">—</div>
+    <div class="movie-plot" id="cardPlot"></div>
+    <div class="tags-row" id="cardTags"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+  let groqKey = '';
+  let omdbKey = '';
+  let stream = null;
+  let scanTimer = null;
+  let isScanning = false;
+  let lastTitle = '';
+
+  const video = document.getElementById('video');
+
+  // ── Start app ──────────────────────────────────────────────────────────────
+  async function startApp() {
+    groqKey = document.getElementById('groqKey').value.trim();
+    omdbKey = document.getElementById('omdbKey').value.trim();
+
+    if (!groqKey || !omdbKey) {
+      showToast('Please enter both API keys.');
+      return;
+    }
+
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      video.srcObject = stream;
+      await video.play();
+    } catch {
+      // Fallback to any camera if rear not available
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+        await video.play();
+      } catch (err) {
+        showToastSetup('Camera access denied — please allow camera permissions.');
+        return;
+      }
+    }
+
+    document.getElementById('setup').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+
+    // Start periodic scan
+    scanNow();
+    scanTimer = setInterval(scanNow, 4000);
+  }
+
+  // ── Scan loop ──────────────────────────────────────────────────────────────
+  async function scanNow() {
+    if (isScanning || !video.videoWidth) return;
+    isScanning = true;
+    setStatus('scanning', 'Scanning…');
+
+    try {
+      const base64 = captureFrame();
+      const result = await identifyMovie(base64);
+
+      if (result?.found && result.title) {
+        setStatus('live', `Detected: ${result.title}`);
+        if (result.title.toLowerCase() !== lastTitle.toLowerCase()) {
+          lastTitle = result.title;
+          const details = await fetchDetails(result.title, result.year);
+          showCard(details || { title: result.title, year: result.year });
+        }
+      } else {
+        setStatus('live', 'Scanning — point at a movie poster');
+      }
+    } catch (err) {
+      console.error(err);
+      setStatus('live', 'Error — retrying…');
+    }
+
+    isScanning = false;
+  }
+
+  // ── Capture a JPEG frame from the video ───────────────────────────────────
+  function captureFrame() {
+    const c = document.createElement('canvas');
+    c.width = video.videoWidth;
+    c.height = video.videoHeight;
+    c.getContext('2d').drawImage(video, 0, 0);
+    // Reduce size for faster upload
+    const small = document.createElement('canvas');
+    small.width = 640;
+    small.height = Math.round(640 * (video.videoHeight / video.videoWidth));
+    small.getContext('2d').drawImage(c, 0, 0, small.width, small.height);
+    return small.toDataURL('image/jpeg', 0.75).split(',')[1];
+  }
+
+  // ── Groq vision call ──────────────────────────────────────────────────────
+  async function identifyMovie(base64) {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${groqKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'Look at this image carefully. Is there a movie or TV show poster, title, or any identifiable movie/show name visible — either on a screen, a physical poster, a DVD cover, or anywhere? If yes, respond ONLY with valid JSON (no markdown, no extra text): {"found": true, "title": "Exact Title", "year": "YYYY"}. Omit year if not visible. If no movie or show is identifiable, respond ONLY with: {"found": false}'
+            },
+            {
+              type: 'image_url',
+              image_url: { url: `data:image/jpeg;base64,${base64}` }
+            }
+          ]
+        }],
+        max_tokens: 80,
+        temperature: 0.1
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `Groq ${res.status}`);
+    }
+
+    const data = await res.json();
+    const text = (data.choices?.[0]?.message?.content || '').trim();
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      const match = text.match(/\{[\s\S]*?\}/);
+      if (match) return JSON.parse(match[0]);
+      return { found: false };
+    }
+  }
+
+  // ── OMDB lookup ────────────────────────────────────────────────────────────
+  async function fetchDetails(title, year) {
+    let url = `https://www.omdbapi.com/?t=${encodeURIComponent(title)}&apikey=${omdbKey}&plot=short`;
+    if (year) url += `&y=${year}`;
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (data.Response !== 'True') return null;
+
+    return {
+      title: data.Title,
+      year: data.Year,
+      rating: data.imdbRating !== 'N/A' ? data.imdbRating : null,
+      plot: data.Plot !== 'N/A' ? data.Plot : null,
+      genre: data.Genre !== 'N/A' ? data.Genre : null,
+      runtime: data.Runtime !== 'N/A' ? data.Runtime : null,
+    };
+  }
+
+  // ── Render movie card ──────────────────────────────────────────────────────
+  function showCard(d) {
+    document.getElementById('cardTitle').textContent = d.title || 'Unknown';
+    document.getElementById('cardYear').textContent = d.year ? `(${d.year})` : '';
+    document.getElementById('cardRating').textContent = d.rating || '—';
+    document.getElementById('cardPlot').textContent = d.plot || 'No description available.';
+
+    const tagsEl = document.getElementById('cardTags');
+    tagsEl.innerHTML = '';
+    if (d.genre) {
+      d.genre.split(', ').slice(0, 3).forEach(g => {
+        const t = document.createElement('span');
+        t.className = 'tag';
+        t.textContent = g;
+        tagsEl.appendChild(t);
+      });
+    }
+    if (d.runtime) {
+      const t = document.createElement('span');
+      t.className = 'tag';
+      t.textContent = d.runtime;
+      tagsEl.appendChild(t);
+    }
+
+    document.getElementById('movieCard').classList.add('visible');
+  }
+
+  // ── Status pill ────────────────────────────────────────────────────────────
+  function setStatus(type, text) {
+    document.getElementById('statusDot').className = `status-dot${type === 'scanning' ? ' scanning' : ''}`;
+    document.getElementById('statusText').textContent = text;
+  }
+
+  // ── Toast (setup screen) ───────────────────────────────────────────────────
+  function showToastSetup(msg) {
+    alert(msg);
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
+  // ── Go back to settings ────────────────────────────────────────────────────
+  function goBack() {
+    clearInterval(scanTimer);
+    stream?.getTracks().forEach(t => t.stop());
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('movieCard').classList.remove('visible');
+    document.getElementById('setup').style.display = 'flex';
+    lastTitle = '';
+    isScanning = false;
+  }
+</script>
+
+</body>
+</html>
