@@ -6,7 +6,7 @@
 
 ## Demo
 
-![PopcornPeek in action](demo.png)
+<img src="demo.png" width="320" alt="PopcornPeek in action" />
 
 ---
 
