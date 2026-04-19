@@ -14,6 +14,10 @@ export default {
       return cors(await handleMovie(url, env));
     }
 
+    if (request.method === 'GET' && url.pathname === '/recommendations') {
+      return cors(await handleRecommendations(url, env));
+    }
+
     return cors(new Response('Not found', { status: 404 }));
   }
 };
@@ -154,6 +158,34 @@ async function handleMovie(url, env) {
 
   // 5. Nothing found anywhere — still show the title
   return json({ found: true, source: 'none', title, year: year || null, rating: null, plot: null, genre: null, runtime: null });
+}
+
+// GET /recommendations?title=Inception&year=2010
+async function handleRecommendations(url, env) {
+  const title = url.searchParams.get('title');
+  const year  = url.searchParams.get('year');
+  if (!title) return json({ recommendations: [] });
+
+  const searchRes  = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${env.TMDB_API_KEY}&query=${encodeURIComponent(title)}${year ? '&year=' + year : ''}`);
+  const searchData = await searchRes.json();
+  const movie      = searchData.results?.[0];
+  if (!movie) return json({ recommendations: [] });
+
+  const recRes  = await fetch(`https://api.themoviedb.org/3/movie/${movie.id}/recommendations?api_key=${env.TMDB_API_KEY}`);
+  const recData = await recRes.json();
+
+  const recommendations = (recData.results || [])
+    .filter(m => m.poster_path && m.overview)
+    .slice(0, 3)
+    .map(m => ({
+      title:    m.title,
+      overview: m.overview.length > 140 ? m.overview.slice(0, 140) + '…' : m.overview,
+      poster:   `https://image.tmdb.org/t/p/w200${m.poster_path}`,
+      rating:   m.vote_average ? m.vote_average.toFixed(1) : null,
+      year:     m.release_date?.slice(0, 4) || null,
+    }));
+
+  return json({ recommendations });
 }
 
 function json(data, status = 200) {
