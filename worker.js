@@ -90,42 +90,71 @@ async function handleMovie(url, env) {
 
   if (!title) return json({ error: 'No title provided' }, 400);
 
-  // 1. Try exact match
+  // 1. Try OMDB exact match
   let omdbUrl = `https://www.omdbapi.com/?t=${encodeURIComponent(title)}&apikey=${env.OMDB_API_KEY}&plot=short`;
   if (year) omdbUrl += `&y=${year}`;
 
   let res  = await fetch(omdbUrl);
   let data = await res.json();
 
-  // 2. If not found, try search and pick top result
+  // 2. OMDB broad search fallback
   if (data.Response !== 'True') {
-    const searchUrl = `https://www.omdbapi.com/?s=${encodeURIComponent(title)}&apikey=${env.OMDB_API_KEY}&type=movie`;
+    const searchUrl  = `https://www.omdbapi.com/?s=${encodeURIComponent(title)}&apikey=${env.OMDB_API_KEY}&type=movie`;
     const searchRes  = await fetch(searchUrl);
     const searchData = await searchRes.json();
 
     if (searchData.Response === 'True' && searchData.Search?.length > 0) {
-      const top = searchData.Search[0];
-      const detailUrl = `https://www.omdbapi.com/?i=${top.imdbID}&apikey=${env.OMDB_API_KEY}&plot=short`;
-      const detailRes  = await fetch(detailUrl);
+      const detailRes = await fetch(`https://www.omdbapi.com/?i=${searchData.Search[0].imdbID}&apikey=${env.OMDB_API_KEY}&plot=short`);
       data = await detailRes.json();
     }
   }
 
-  if (data.Response !== 'True') {
-    // Return basic info so frontend can still show the title
-    return json({ found: true, title, year: year || null, rating: null, plot: null, genre: null, runtime: null, noImdb: true });
+  // 3. OMDB found — return it
+  if (data.Response === 'True') {
+    return json({
+      found:   true,
+      source:  'imdb',
+      title:   data.Title,
+      year:    data.Year,
+      rating:  data.imdbRating !== 'N/A' ? data.imdbRating : null,
+      plot:    data.Plot        !== 'N/A' ? data.Plot        : null,
+      genre:   data.Genre       !== 'N/A' ? data.Genre       : null,
+      runtime: data.Runtime     !== 'N/A' ? data.Runtime     : null,
+    });
   }
 
-  return json({
-    found:   true,
-    title:   data.Title,
-    year:    data.Year,
-    rating:  data.imdbRating !== 'N/A' ? data.imdbRating : null,
-    plot:    data.Plot        !== 'N/A' ? data.Plot        : null,
-    genre:   data.Genre       !== 'N/A' ? data.Genre       : null,
-    runtime: data.Runtime     !== 'N/A' ? data.Runtime     : null,
-    noImdb:  false,
-  });
+  // 4. Fallback to TMDB
+  const tmdbSearch = await fetch(
+    `https://api.themoviedb.org/3/search/movie?api_key=${env.TMDB_API_KEY}&query=${encodeURIComponent(title)}${year ? '&year=' + year : ''}`
+  );
+  const tmdbData = await tmdbSearch.json();
+  const movie = tmdbData.results?.[0];
+
+  if (movie) {
+    // Fetch full details for runtime + genres
+    const tmdbDetail = await fetch(
+      `https://api.themoviedb.org/3/movie/${movie.id}?api_key=${env.TMDB_API_KEY}`
+    );
+    const detail = await tmdbDetail.json();
+
+    const genres  = detail.genres?.map(g => g.name).join(', ') || null;
+    const runtime = detail.runtime ? `${detail.runtime} min` : null;
+    const rating  = movie.vote_average ? movie.vote_average.toFixed(1) : null;
+
+    return json({
+      found:   true,
+      source:  'tmdb',
+      title:   movie.title,
+      year:    movie.release_date?.slice(0, 4) || null,
+      rating,
+      plot:    movie.overview || null,
+      genre:   genres,
+      runtime,
+    });
+  }
+
+  // 5. Nothing found anywhere — still show the title
+  return json({ found: true, source: 'none', title, year: year || null, rating: null, plot: null, genre: null, runtime: null });
 }
 
 function json(data, status = 200) {

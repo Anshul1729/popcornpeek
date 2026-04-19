@@ -609,8 +609,18 @@
     document.getElementById('cardTitle').textContent = d.title || 'Unknown';
     document.getElementById('cardYear').textContent  = d.year  ? `(${d.year})` : '';
     document.getElementById('cardRating').textContent = d.rating || '—';
-    document.getElementById('cardPlot').textContent  = d.plot  || (d.noImdb ? 'Not yet listed on IMDb.' : 'No description available.');
-    document.getElementById('imdbBadge').style.opacity = d.noImdb ? '0.35' : '1';
+    document.getElementById('cardPlot').textContent  = d.plot  || (d.source === 'none' ? 'Not found on IMDb or TMDB.' : 'No description available.');
+
+    const badge = document.getElementById('imdbBadge');
+    if (d.source === 'tmdb') {
+      badge.textContent = 'TMDB';
+      badge.style.background = '#01b4e4';
+      badge.style.opacity = '1';
+    } else {
+      badge.textContent = 'IMDb';
+      badge.style.background = '#f5c518';
+      badge.style.opacity = d.source === 'none' ? '0.35' : '1';
+    }
 
     const tagsEl = document.getElementById('cardTags');
     tagsEl.innerHTML = '';
