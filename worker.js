@@ -22,6 +22,24 @@ export default {
   }
 };
 
+const PROMPT = `You are analyzing a camera image that shows a TV screen, streaming app, or movie posters.
+
+Identify the MOST PROMINENT movie or TV show visible. It could be Bollywood, Hollywood, South Indian (Tamil, Telugu, Malayalam, Kannada), or any regional/international film.
+
+Rules:
+- Read ALL visible text carefully — Hindi (Devanagari), Tamil, Telugu, Malayalam, Kannada, Bengali, English
+- Title may appear in any language — always return the most widely known ENGLISH title
+- For Indian films use the official English title (e.g. "Pushpa 2: The Rule" not "पुष्पा 2")
+- If multiple movies are visible, pick the one that is LARGEST, most CENTERED, or most clearly visible
+- Use poster artwork as a strong clue — recognize famous movie posters even if text is unclear, blurry, or partially obscured
+- Ignore streaming platform logos (Netflix, Prime, Hotstar, MX Player, etc.)
+- Be confident: if you recognize the poster artwork, identify it even if the title text isn't fully readable
+
+Respond with JSON only, no markdown, no commentary:
+- If found: {"found": true, "title": "English Title", "year": "YYYY"}
+- If nothing identifiable: {"found": false}
+- Omit "year" if not visible or unknown.`;
+
 async function handleIdentify(request, env) {
   let body;
   try {
@@ -32,59 +50,120 @@ async function handleIdentify(request, env) {
 
   if (!body.image) return json({ error: 'No image provided' }, 400);
 
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${env.GROQ_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: `You are analyzing a camera image that likely shows a TV screen or streaming app with movie/show thumbnails.
+  const imageSize = Math.round(body.image.length * 0.75 / 1024);
+  console.log(`[identify] Received image, ~${imageSize}KB base64`);
 
-Your job: identify the MOST PROMINENT movie or TV show visible. It could be Bollywood, Hollywood, South Indian (Tamil, Telugu, Malayalam, Kannada), or any regional language film.
-
-Rules:
-- Read ALL text carefully including Hindi (Devanagari script), Tamil, Telugu, or other scripts
-- The title may appear in English, Hindi, or regional language — always return the most widely known English title
-- If multiple movies are visible, pick the one that is largest or most centered
-- For Bollywood/Indian films, use the official English title (e.g. "Pushpa 2 The Rule" not "पुष्पा 2")
-- Ignore streaming platform logos (Netflix, Prime, MX Player etc.)
-
-Respond ONLY with valid JSON, no markdown:
-If found: {"found": true, "title": "English Title", "year": "YYYY"}
-If not found: {"found": false}
-Omit year if not visible.`
-          },
-          {
-            type: 'image_url',
-            image_url: { url: `data:image/jpeg;base64,${body.image}` }
-          }
-        ]
-      }],
-      max_tokens: 100,
-      temperature: 0.1
-    })
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    return json({ error: err?.error?.message || `Groq ${res.status}` }, 502);
+  // 1. Try Gemini 2.5 Flash first — best vision quality, especially for Indian scripts
+  if (env.GEMINI_API_KEY) {
+    const geminiResult = await tryGemini(body.image, env.GEMINI_API_KEY);
+    if (geminiResult) {
+      console.log(`[identify] Gemini returned:`, JSON.stringify(geminiResult));
+      return json(geminiResult);
+    }
+    console.warn(`[identify] Gemini failed, falling back to Groq`);
+  } else {
+    console.warn(`[identify] GEMINI_API_KEY not set, using Groq`);
   }
 
-  const data = await res.json();
-  const text = (data.choices?.[0]?.message?.content || '').trim();
+  // 2. Fallback to Groq
+  if (!env.GROQ_API_KEY) {
+    return json({ error: 'No vision API keys configured' }, 500);
+  }
 
+  const groqResult = await tryGroq(body.image, env.GROQ_API_KEY);
+  console.log(`[identify] Groq returned:`, JSON.stringify(groqResult));
+  return json(groqResult);
+}
+
+async function tryGemini(imageBase64, apiKey) {
   try {
-    return json(JSON.parse(text));
-  } catch {
-    const match = text.match(/\{[\s\S]*?\}/);
-    return json(match ? JSON.parse(match[0]) : { found: false });
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: PROMPT },
+              { inline_data: { mime_type: 'image/jpeg', data: imageBase64 } }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 200,
+            responseMimeType: 'application/json'
+          }
+        })
+      }
+    );
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[gemini] HTTP ${res.status}:`, errText.slice(0, 300));
+      return null;
+    }
+
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+
+    if (!text) {
+      console.error(`[gemini] Empty response:`, JSON.stringify(data).slice(0, 300));
+      return null;
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      const match = text.match(/\{[\s\S]*?\}/);
+      return match ? JSON.parse(match[0]) : null;
+    }
+  } catch (e) {
+    console.error(`[gemini] Exception:`, e.message);
+    return null;
+  }
+}
+
+async function tryGroq(imageBase64, apiKey) {
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: PROMPT },
+            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64}` } }
+          ]
+        }],
+        max_tokens: 200,
+        temperature: 0.1
+      })
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[groq] HTTP ${res.status}:`, errText.slice(0, 300));
+      return { found: false, error: `Groq ${res.status}` };
+    }
+
+    const data = await res.json();
+    const text = (data.choices?.[0]?.message?.content || '').trim();
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      const match = text.match(/\{[\s\S]*?\}/);
+      return match ? JSON.parse(match[0]) : { found: false };
+    }
+  } catch (e) {
+    console.error(`[groq] Exception:`, e.message);
+    return { found: false, error: e.message };
   }
 }
 
@@ -134,7 +213,6 @@ async function handleMovie(url, env) {
   const movie = tmdbData.results?.[0];
 
   if (movie) {
-    // Fetch full details for runtime + genres
     const tmdbDetail = await fetch(
       `https://api.themoviedb.org/3/movie/${movie.id}?api_key=${env.TMDB_API_KEY}`
     );
@@ -156,11 +234,9 @@ async function handleMovie(url, env) {
     });
   }
 
-  // 5. Nothing found anywhere — still show the title
   return json({ found: true, source: 'none', title, year: year || null, rating: null, plot: null, genre: null, runtime: null });
 }
 
-// GET /recommendations?title=Inception&year=2010
 async function handleRecommendations(url, env) {
   const title = url.searchParams.get('title');
   const year  = url.searchParams.get('year');
