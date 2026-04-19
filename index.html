@@ -412,6 +412,7 @@
     await requestWakeLock();
     setupPinchZoom();
     setupTapToFocus();
+    await autofocusCenter();
 
     scanNow();
     scanTimer = setInterval(scanNow, 4000);
@@ -477,7 +478,7 @@
     setStatus('scanning', 'Scanning…');
 
     try {
-      const base64 = captureFrame();
+      const base64 = await captureFrame();
       const res    = await fetch(`${apiBase}/identify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -525,13 +526,32 @@
     isScanning = false;
   }
 
-  // ── Frame capture (cropped to scan ring) ──────────────────────────────────
-  function captureFrame() {
-    const vW = video.videoWidth, vH = video.videoHeight;
+  // ── Frame capture — uses ImageCapture.takePhoto() for native quality ────────
+  async function captureFrame() {
+    const track = stream?.getVideoTracks()[0];
+
+    if (track && ('ImageCapture' in window)) {
+      try {
+        const imageCapture = new ImageCapture(track);
+        const blob   = await imageCapture.takePhoto();
+        const bitmap = await createImageBitmap(blob);
+        const b64    = cropSourceToRing(bitmap, bitmap.width, bitmap.height);
+        bitmap.close();
+        return b64;
+      } catch (e) {
+        console.warn('ImageCapture failed, falling back to canvas:', e);
+      }
+    }
+
+    // Fallback: draw video frame to canvas (lower quality)
+    return cropSourceToRing(video, video.videoWidth, video.videoHeight);
+  }
+
+  function cropSourceToRing(source, srcNatW, srcNatH) {
     const dW = video.clientWidth, dH = video.clientHeight;
-    const scale = Math.max(dW / vW, dH / vH);
-    const clipX = (vW * scale - dW) / 2;
-    const clipY = (vH * scale - dH) / 2;
+    const scale = Math.max(dW / srcNatW, dH / srcNatH);
+    const clipX = (srcNatW * scale - dW) / 2;
+    const clipY = (srcNatH * scale - dH) / 2;
 
     const rect = scanRing.getBoundingClientRect();
     const srcX = (rect.left + clipX) / scale;
@@ -541,8 +561,26 @@
 
     const c = document.createElement('canvas');
     c.width = Math.round(srcW); c.height = Math.round(srcH);
-    c.getContext('2d').drawImage(video, srcX, srcY, srcW, srcH, 0, 0, c.width, c.height);
-    return c.toDataURL('image/jpeg', 0.92).split(',')[1];
+    c.getContext('2d').drawImage(source, srcX, srcY, srcW, srcH, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.93).split(',')[1];
+  }
+
+  // ── Auto-focus center when camera starts ──────────────────────────────────
+  async function autofocusCenter() {
+    const track = stream?.getVideoTracks()[0];
+    if (!track) return;
+    const caps = track.getCapabilities?.() || {};
+    try {
+      if (caps.focusMode?.includes('single-shot') && caps.pointOfInterest) {
+        await track.applyConstraints({
+          advanced: [{ focusMode: 'single-shot', pointOfInterest: { x: 0.5, y: 0.5 } }]
+        });
+        await new Promise(r => setTimeout(r, 800));
+        await track.applyConstraints({
+          advanced: [{ focusMode: 'continuous', exposureMode: 'continuous', whiteBalanceMode: 'continuous' }]
+        });
+      }
+    } catch { /* unsupported — ignore */ }
   }
 
   // ── Current movie panel ───────────────────────────────────────────────────
