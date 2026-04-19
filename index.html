@@ -370,6 +370,8 @@
   let wakeLock      = null;
   let currentZoom   = 1;
   let lastPinchDist = 0;
+  let scanVersion   = 0;   // increments each scan; stale results are ignored
+  let abortCtrl     = null;
 
   const video    = document.getElementById('video');
   const scanRing = document.getElementById('scanRing');
@@ -466,25 +468,41 @@
 
       scanRing.style.borderColor = 'rgba(255,255,255,0.7)';
       setTimeout(() => { scanRing.style.borderColor = ''; }, 400);
-      scanNow();
+
+      // Always cancel whatever is running and start fresh
+      scanNow(true);
     });
   }
 
   // ── Scan loop ─────────────────────────────────────────────────────────────
-  async function scanNow() {
-    if (isScanning || !video.videoWidth) return;
+  async function scanNow(forced = false) {
+    if (!video.videoWidth) return;
+
+    // Abort any in-flight scan — tap always wins
+    if (forced || isScanning) {
+      abortCtrl?.abort();
+    }
+    if (isScanning && !forced) return;
+
+    abortCtrl  = new AbortController();
+    const myVersion = ++scanVersion;
+
     isScanning = true;
     scanRing.classList.add('scanning');
     setStatus('scanning', 'Scanning…');
 
     try {
       const base64 = await captureFrame();
-      const res    = await fetch(`${apiBase}/identify`, {
+      if (myVersion !== scanVersion) return; // superseded by a newer tap
+
+      const res = await fetch(`${apiBase}/identify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64 })
+        body: JSON.stringify({ image: base64 }),
+        signal: abortCtrl.signal
       });
 
+      if (myVersion !== scanVersion) return;
       if (!res.ok) throw new Error(`${res.status}`);
       const result = await res.json();
 
@@ -496,17 +514,18 @@
           lastTitle = result.title;
           showCurrentLoading(result.title, result.year);
 
-          // Fetch details + recommendations in parallel
           const titleParam = encodeURIComponent(result.title);
           const yearParam  = result.year ? '&year=' + result.year : '';
+          const sig        = abortCtrl.signal;
 
           Promise.all([
-            fetch(`${apiBase}/movie?title=${titleParam}${yearParam}`).then(r => r.json()),
-            fetch(`${apiBase}/recommendations?title=${titleParam}${yearParam}`).then(r => r.json()),
+            fetch(`${apiBase}/movie?title=${titleParam}${yearParam}`, { signal: sig }).then(r => r.json()),
+            fetch(`${apiBase}/recommendations?title=${titleParam}${yearParam}`, { signal: sig }).then(r => r.json()),
           ]).then(([details, recs]) => {
+            if (myVersion !== scanVersion) return; // stale — user already moved on
             if (details?.found) updateCurrentMovie(details);
             if (recs?.recommendations?.length) showRecommendations(recs.recommendations);
-          }).catch(() => {});
+          }).catch(e => { if (e.name !== 'AbortError') console.error(e); });
         }
       } else {
         noDetectCount++;
@@ -518,12 +537,15 @@
         }
       }
     } catch (err) {
+      if (err.name === 'AbortError') return; // cancelled by user tap — silent
       console.error(err);
       setStatus('live', 'Error — retrying…');
+    } finally {
+      if (myVersion === scanVersion) {
+        scanRing.classList.remove('scanning');
+        isScanning = false;
+      }
     }
-
-    scanRing.classList.remove('scanning');
-    isScanning = false;
   }
 
   // ── Frame capture — uses ImageCapture.takePhoto() for native quality ────────
