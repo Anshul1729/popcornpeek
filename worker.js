@@ -90,15 +90,19 @@ async function handleMovie(url, env) {
 
   if (!title) return json({ error: 'No title provided' }, 400);
 
-  // 1. Try OMDB exact match
-  let omdbUrl = `https://www.omdbapi.com/?t=${encodeURIComponent(title)}&apikey=${env.OMDB_API_KEY}&plot=short`;
-  if (year) omdbUrl += `&y=${year}`;
+  const forceTmdb = url.searchParams.get('force') === 'tmdb';
 
-  let res  = await fetch(omdbUrl);
-  let data = await res.json();
+  // 1. Try OMDB exact match (skip if force=tmdb)
+  let data = { Response: 'False' };
+  if (!forceTmdb) {
+    let omdbUrl = `https://www.omdbapi.com/?t=${encodeURIComponent(title)}&apikey=${env.OMDB_API_KEY}&plot=short`;
+    if (year) omdbUrl += `&y=${year}`;
+    const res = await fetch(omdbUrl);
+    data = await res.json();
+  }
 
-  // 2. OMDB broad search fallback
-  if (data.Response !== 'True') {
+  // 2. OMDB broad search fallback (skip if force=tmdb)
+  if (!forceTmdb && data.Response !== 'True') {
     const searchUrl  = `https://www.omdbapi.com/?s=${encodeURIComponent(title)}&apikey=${env.OMDB_API_KEY}&type=movie`;
     const searchRes  = await fetch(searchUrl);
     const searchData = await searchRes.json();
