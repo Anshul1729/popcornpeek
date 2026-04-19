@@ -145,6 +145,16 @@
       font-size: 0.7rem; color: rgba(255,255,255,0.3); pointer-events: none; z-index: 5; white-space: nowrap;
     }
 
+    .hd-btn {
+      position: absolute; bottom: 14px; right: 14px;
+      background: rgba(0,0,0,0.65); backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.15); border-radius: 20px;
+      padding: 6px 14px; color: #fff; font-size: 0.78rem;
+      cursor: pointer; z-index: 10; font-weight: 600;
+      transition: background 0.2s;
+    }
+    .hd-btn:hover { background: rgba(255,255,255,0.12); }
+
     /* ── Bottom Panel (35%) ── */
     #bottomPanel {
       flex: 1;
@@ -331,7 +341,11 @@
       <div class="scan-line"></div>
     </div>
 
-    <div class="tap-hint">Tap to scan now</div>
+    <div class="tap-hint">Tap to scan · 📷 for HD</div>
+
+    <!-- Native camera fallback — full ISP quality -->
+    <input type="file" id="nativeCapture" accept="image/*" capture="environment" style="display:none" />
+    <button class="hd-btn" onclick="document.getElementById('nativeCapture').click()">📷 HD</button>
   </div>
 
   <!-- Bottom panel (35%) -->
@@ -560,7 +574,14 @@
     if (track && ('ImageCapture' in window)) {
       try {
         const imageCapture = new ImageCapture(track);
-        const blob   = await imageCapture.takePhoto();
+        // Request max sensor resolution so Android doesn't downsample
+        let photoSettings = {};
+        try {
+          const caps = await imageCapture.getPhotoCapabilities();
+          if (caps.imageWidth?.max)  photoSettings.imageWidth  = caps.imageWidth.max;
+          if (caps.imageHeight?.max) photoSettings.imageHeight = caps.imageHeight.max;
+        } catch {}
+        const blob   = await imageCapture.takePhoto(photoSettings);
         const bitmap = await createImageBitmap(blob);
         const b64    = cropSourceToRing(bitmap, bitmap.width, bitmap.height);
         bitmap.close();
@@ -693,6 +714,84 @@
     document.getElementById('setup').style.display = 'flex';
     resetPanel();
     lastTitle = ''; isScanning = false; noDetectCount = 0;
+  }
+
+  // ── HD button — native camera capture ─────────────────────────────────────
+  document.getElementById('nativeCapture').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = ''; // reset so the same photo can be re-selected
+
+    abortCtrl?.abort();
+    abortCtrl = new AbortController();
+    const myVersion = ++scanVersion;
+    isScanning = true;
+    scanRing.classList.add('scanning');
+    setStatus('scanning', 'Scanning HD photo…');
+
+    try {
+      const b64 = await fileToBase64(file);
+      if (myVersion !== scanVersion) return;
+
+      const res = await fetch(`${apiBase}/identify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: b64 }),
+        signal: abortCtrl.signal
+      });
+
+      if (myVersion !== scanVersion) return;
+      if (!res.ok) throw new Error(`${res.status}`);
+      const result = await res.json();
+
+      if (result?.found && result.title) {
+        noDetectCount = 0;
+        setStatus('live', `Detected: ${result.title}`);
+        lastTitle = result.title;
+        showCurrentLoading(result.title, result.year);
+
+        const titleParam = encodeURIComponent(result.title);
+        const yearParam  = result.year ? '&year=' + result.year : '';
+        const sig        = abortCtrl.signal;
+
+        Promise.all([
+          fetch(`${apiBase}/movie?title=${titleParam}${yearParam}`, { signal: sig }).then(r => r.json()),
+          fetch(`${apiBase}/recommendations?title=${titleParam}${yearParam}`, { signal: sig }).then(r => r.json()),
+        ]).then(([details, recs]) => {
+          if (myVersion !== scanVersion) return;
+          if (details?.found) updateCurrentMovie(details);
+          if (recs?.recommendations?.length) showRecommendations(recs.recommendations);
+        }).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+      } else {
+        setStatus('live', 'No movie found in photo');
+        showToast('No movie detected — try again');
+      }
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      console.error(err);
+      setStatus('live', 'Error — try again');
+    } finally {
+      if (myVersion === scanVersion) {
+        scanRing.classList.remove('scanning');
+        isScanning = false;
+      }
+    }
+  });
+
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload  = ev => resolve(ev.target.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2500);
   }
 </script>
 </body>
