@@ -461,7 +461,11 @@
           facingMode: 'environment',
           width: { ideal: 1920 },
           height: { ideal: 1080 },
-          advanced: [{ focusMode: 'continuous' }]
+          advanced: [{
+            focusMode: 'continuous',
+            exposureMode: 'continuous',
+            whiteBalanceMode: 'continuous',
+          }]
         }
       });
       video.srcObject = stream;
@@ -483,6 +487,7 @@
 
     await requestWakeLock();
     setupPinchZoom();
+    setupTapToFocus();
 
     scanNow();
     scanTimer = setInterval(scanNow, 4000);
@@ -520,11 +525,38 @@
     await track.applyConstraints({ advanced: [{ zoom: currentZoom }] });
   }
 
-  // ── Tap to scan immediately ────────────────────────────────────────────────
-  document.getElementById('app').addEventListener('click', e => {
-    if (e.target.closest('.settings-btn') || e.target.closest('.movie-card')) return;
-    scanNow();
-  });
+  // ── Tap to focus + scan ───────────────────────────────────────────────────
+  function setupTapToFocus() {
+    document.getElementById('app').addEventListener('click', async e => {
+      if (e.target.closest('.settings-btn') || e.target.closest('.movie-card')) return;
+
+      // Focus camera at tap point
+      const track = stream?.getVideoTracks()[0];
+      if (track) {
+        const caps = track.getCapabilities?.() || {};
+        const nx = e.clientX / window.innerWidth;
+        const ny = e.clientY / window.innerHeight;
+
+        try {
+          // Single-shot focus at tap point, then back to continuous
+          if (caps.focusMode?.includes('single-shot') && caps.pointOfInterest) {
+            await track.applyConstraints({
+              advanced: [{ focusMode: 'single-shot', pointOfInterest: { x: nx, y: ny } }]
+            });
+            setTimeout(() => track.applyConstraints({
+              advanced: [{ focusMode: 'continuous', exposureMode: 'continuous', whiteBalanceMode: 'continuous' }]
+            }).catch(() => {}), 1200);
+          }
+        } catch { /* unsupported — ignore */ }
+      }
+
+      // Show focus ring flash on scan ring
+      scanRing.style.borderColor = 'rgba(255,255,255,0.7)';
+      setTimeout(() => { scanRing.style.borderColor = ''; }, 400);
+
+      scanNow();
+    });
+  }
 
   // ── Scan loop ─────────────────────────────────────────────────────────────
   async function scanNow() {
@@ -551,9 +583,17 @@
 
         if (result.title.toLowerCase() !== lastTitle.toLowerCase()) {
           lastTitle = result.title;
-          const movieRes = await fetch(`${apiBase}/movie?title=${encodeURIComponent(result.title)}${result.year ? '&year=' + result.year : ''}`);
-          const details  = await movieRes.json();
-          showCard(details?.found ? details : { title: result.title, year: result.year, noImdb: true });
+
+          // Show title immediately — don't wait for rating/plot
+          showCardLoading(result.title, result.year);
+
+          // Fetch details in background
+          fetch(`${apiBase}/movie?title=${encodeURIComponent(result.title)}${result.year ? '&year=' + result.year : ''}`)
+            .then(r => r.json())
+            .then(details => {
+              if (details?.found) showCard(details);
+            })
+            .catch(() => {});
         }
       } else {
         noDetectCount++;
@@ -602,6 +642,21 @@
     c.getContext('2d').drawImage(video, srcX, srcY, srcW, srcH, 0, 0, c.width, c.height);
 
     return c.toDataURL('image/jpeg', 0.92).split(',')[1];
+  }
+
+  // ── Show title immediately while details load ─────────────────────────────
+  function showCardLoading(title, year) {
+    document.getElementById('cardTitle').textContent = title;
+    document.getElementById('cardYear').textContent  = year ? `(${year})` : '';
+    document.getElementById('cardRating').textContent = '…';
+    document.getElementById('cardPlot').textContent  = '';
+    document.getElementById('cardTags').innerHTML    = '';
+
+    const badge = document.getElementById('imdbBadge');
+    badge.textContent = 'IMDb'; badge.style.background = '#f5c518'; badge.style.opacity = '0.5';
+
+    document.getElementById('movieCard').classList.add('visible');
+    navigator.vibrate?.(40);
   }
 
   // ── Show movie card ────────────────────────────────────────────────────────
