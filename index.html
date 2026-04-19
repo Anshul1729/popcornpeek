@@ -569,7 +569,12 @@
           fetch(`${apiBase}/recommendations?title=${titleParam}${yearParam}`, { signal: sig }).then(r => r.json()),
         ]).then(([details, recs]) => {
           if (myVersion !== scanVersion) return;
-          if (details?.found) updateCurrentMovie(details);
+          if (details?.found) {
+            updateCurrentMovie(details);
+            saveScan(details);
+          } else {
+            saveScan({ title: result.title, year: result.year });
+          }
           if (recs?.recommendations?.length) showRecommendations(recs.recommendations);
         }).catch(e => { if (e.name !== 'AbortError') console.error(e); });
 
@@ -709,7 +714,12 @@
           fetch(`${apiBase}/recommendations?title=${titleParam}${yearParam}`, { signal: sig }).then(r => r.json()),
         ]).then(([details, recs]) => {
           if (myVersion !== scanVersion) return;
-          if (details?.found) updateCurrentMovie(details);
+          if (details?.found) {
+            updateCurrentMovie(details);
+            saveScan(details);
+          } else {
+            saveScan({ title: result.title, year: result.year });
+          }
           if (recs?.recommendations?.length) showRecommendations(recs.recommendations);
         }).catch(err => { if (err.name !== 'AbortError') console.error(err); });
 
@@ -847,6 +857,57 @@
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 3000);
   }
+
+  // ── History (silent local collection) ─────────────────────────────────────
+  // Every successful scan is logged to localStorage. No UI surfaces this yet.
+  // Once we expose a "Recommend" feature, day-one users already have data.
+  const HISTORY_KEY = 'popcornpeek_history_v1';
+  const HISTORY_CAP = 100;
+
+  function historyKey(title, year) {
+    return `${(title || '').toLowerCase().trim()}::${year || ''}`;
+  }
+
+  function getHistory() {
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); }
+    catch { return []; }
+  }
+
+  function saveScan(movie) {
+    if (!movie?.title) return;
+    const history = getHistory();
+    const key = historyKey(movie.title, movie.year);
+    const idx = history.findIndex(m => historyKey(m.title, m.year) === key);
+    const prev = idx >= 0 ? history[idx] : {};
+    const entry = {
+      title:     movie.title,
+      year:      movie.year    ?? prev.year    ?? null,
+      rating:    movie.rating  ?? prev.rating  ?? null,
+      genre:     movie.genre   ?? prev.genre   ?? null,
+      runtime:   movie.runtime ?? prev.runtime ?? null,
+      plot:      movie.plot    ?? prev.plot    ?? null,
+      source:    movie.source  ?? prev.source  ?? null,
+      scannedAt: Date.now(),
+      scanCount: (prev.scanCount || 0) + 1,
+      watched:   prev.watched ?? null // null = unset, true/false once user marks
+    };
+    if (idx >= 0) history.splice(idx, 1);
+    history.unshift(entry);
+    if (history.length > HISTORY_CAP) history.length = HISTORY_CAP;
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch {}
+  }
+
+  function markWatched(title, year, watched) {
+    const history = getHistory();
+    const idx = history.findIndex(m => historyKey(m.title, m.year) === historyKey(title, year));
+    if (idx < 0) return false;
+    history[idx].watched = watched;
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); return true; }
+    catch { return false; }
+  }
+
+  // Exposed on window for debugging + future feature work
+  window.popcornpeek = { getHistory, saveScan, markWatched };
 
   function goBack() {
     abortCtrl?.abort();
