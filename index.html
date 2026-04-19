@@ -387,13 +387,10 @@
 
   // ── Start app ─────────────────────────────────────────────────────────────
   async function startApp() {
+    // Step 1: get camera — no advanced constraints so it never fails on iOS
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'environment',
-          width: { ideal: 1920 }, height: { ideal: 1080 },
-          advanced: [{ focusMode: 'continuous', exposureMode: 'continuous', whiteBalanceMode: 'continuous' }]
-        }
+        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
       });
       video.srcObject = stream;
       await video.play();
@@ -407,6 +404,13 @@
         return;
       }
     }
+
+    // Step 2: apply advanced constraints separately — silently ignored if unsupported (iOS)
+    try {
+      await stream.getVideoTracks()[0].applyConstraints({
+        advanced: [{ focusMode: 'continuous', exposureMode: 'continuous', whiteBalanceMode: 'continuous' }]
+      });
+    } catch { /* not supported on this device */ }
 
     document.getElementById('setup').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
@@ -548,10 +552,11 @@
     }
   }
 
-  // ── Frame capture — uses ImageCapture.takePhoto() for native quality ────────
+  // ── Frame capture ─────────────────────────────────────────────────────────
   async function captureFrame() {
     const track = stream?.getVideoTracks()[0];
 
+    // Android Chrome: ImageCapture.takePhoto() uses the full native ISP pipeline
     if (track && ('ImageCapture' in window)) {
       try {
         const imageCapture = new ImageCapture(track);
@@ -561,12 +566,20 @@
         bitmap.close();
         return b64;
       } catch (e) {
-        console.warn('ImageCapture failed, falling back to canvas:', e);
+        console.warn('ImageCapture failed, falling back:', e);
       }
     }
 
-    // Fallback: draw video frame to canvas (lower quality)
-    return cropSourceToRing(video, video.videoWidth, video.videoHeight);
+    // iOS / fallback: wait for next frame boundary before capturing
+    // requestVideoFrameCallback ensures we grab a complete, non-tearing frame
+    return new Promise(resolve => {
+      const doCapture = () => resolve(cropSourceToRing(video, video.videoWidth, video.videoHeight));
+      if ('requestVideoFrameCallback' in video) {
+        video.requestVideoFrameCallback(doCapture);
+      } else {
+        doCapture();
+      }
+    });
   }
 
   function cropSourceToRing(source, srcNatW, srcNatH) {
@@ -584,7 +597,7 @@
     const c = document.createElement('canvas');
     c.width = Math.round(srcW); c.height = Math.round(srcH);
     c.getContext('2d').drawImage(source, srcX, srcY, srcW, srcH, 0, 0, c.width, c.height);
-    return c.toDataURL('image/jpeg', 0.93).split(',')[1];
+    return c.toDataURL('image/jpeg', 0.95).split(',')[1];
   }
 
   // ── Auto-focus center when camera starts ──────────────────────────────────
